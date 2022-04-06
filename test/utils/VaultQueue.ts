@@ -102,8 +102,8 @@ describe("VaultQueue", () => {
     );
 
     const VaultQueue = await ethers.getContractFactory("VaultQueue");
-    vaultQueue = await VaultQueue.deploy();
-    await vaultQueue.initialize(ethCallVault.address, stethCallVault.address);
+    vaultQueue = await VaultQueue.deploy(ethCallVault.address, stethCallVault.address);
+    await vaultQueue.initialize();
 
     ownerSigner = await impersonate(ORACLE_OWNER[CHAINID.ETH_MAINNET]);
     wethPriceSigner = await impersonate(CHAINLINK_WETH_PRICER[CHAINID.ETH_MAINNET]);
@@ -155,7 +155,7 @@ describe("VaultQueue", () => {
       oracleContract,
       await wethPriceSigner.getAddress(),
       await getCurrentOptionExpiry(ethCallVault),
-      BigNumber.from("100000000000")
+      BigNumber.from("272655342834")
     );
 
     await rollToNextOption(ethCallVault, strikeSelectionETH);
@@ -191,7 +191,7 @@ describe("VaultQueue", () => {
       oracleContract,
       await wethPriceSigner.getAddress(),
       await getCurrentOptionExpiry(ethCallVault),
-      BigNumber.from("100000000000")
+      BigNumber.from("272655342834")
     );
 
     await rollToNextOption(ethCallVault, strikeSelectionETH);
@@ -274,7 +274,7 @@ describe("VaultQueue", () => {
       oracleContract,
       await wethPriceSigner.getAddress(),
       await getCurrentOptionExpiry(ethCallVault),
-      BigNumber.from("100000000000")
+      BigNumber.from("272655342834")
     );
 
     await rollToNextOption(ethCallVault, strikeSelectionETH);
@@ -308,6 +308,63 @@ describe("VaultQueue", () => {
       .withArgs(await signer5.getAddress(), "47565037599115822455", "16");
   });
 
+  it("Queues up vault transfer from ETH vault to stETH vault 3x", async () => {
+    const vaultTransfer = async (signer: JsonRpcSigner) => {
+        await ethCallVault.connect(signer).maxRedeem();
+
+        const balance = (
+          await ethCallVault.shares(await signer.getAddress())
+        ).toString();
+
+        await ethCallVault.connect(signer).approve(vaultQueue.address, balance);
+        await vaultQueue
+          .connect(signer)
+          .queueTransfer(
+            ethCallVault.address,
+            stethCallVault.address,
+            stethCallVault.address,
+            "0",
+            balance
+          );
+
+        await setOpynOracleExpiryPrice(
+          WETH_ADDRESS[CHAINID.ETH_MAINNET],
+          oracleContract,
+          await wethPriceSigner.getAddress(),
+          await getCurrentOptionExpiry(ethCallVault),
+          BigNumber.from("272655342834")
+        );
+
+        await rollToNextOption(ethCallVault, strikeSelectionETH);
+
+        const interVaultTransferTx = await vaultQueue
+          .connect(keeperSigner)
+          .transfer(ethCallVault.address);
+
+        return interVaultTransferTx;
+    };
+
+    const interVaultTransferTx1 = await vaultTransfer(signer1);
+    const interVaultTransferTx2 = await vaultTransfer(signer2);
+    const interVaultTransferTx3 = await vaultTransfer(signer5);
+
+    await expect(interVaultTransferTx1)
+      .to.emit(stethCallVault, "Deposit")
+      .withArgs(await signer1.getAddress(), "10072592725506459998", "16");
+
+    await expect(interVaultTransferTx2)
+      .to.emit(stethCallVault, "Deposit")
+      .withArgs(await signer2.getAddress(), "100411865008829227", "16");
+
+    // Appears extra shared were minted for signer5
+    await expect(interVaultTransferTx3)
+      .to.emit(stethCallVault, "Deposit")
+      .withArgs(await signer5.getAddress(), "67255786359115822465", "16");
+  });
+
+  //
+  // Withdrawal
+  ///
   it("Doesn't allow the same user to queue up multiple withdrawals", async () => {
     await ethCallVault.connect(signer1).maxRedeem();
     const balance = (
@@ -342,9 +399,6 @@ describe("VaultQueue", () => {
     ).to.be.revertedWith("Withdraw already submitted");
   });
 
-  //
-  // Withdrawal
-  ///
   it("Queues up a vault withdraw from ETH vault to creditor", async () => {
     await ethCallVault.connect(signer1).maxRedeem();
     const balance = (
@@ -356,7 +410,7 @@ describe("VaultQueue", () => {
       oracleContract,
       await wethPriceSigner.getAddress(),
       await getCurrentOptionExpiry(ethCallVault),
-      BigNumber.from("100000000000")
+      BigNumber.from("272655342834")
     );
 
     await rollToNextOption(ethCallVault, strikeSelectionETH);
@@ -378,14 +432,14 @@ describe("VaultQueue", () => {
       oracleContract,
       await wethPriceSigner.getAddress(),
       await getCurrentOptionExpiry(ethCallVault),
-      BigNumber.from("100000000000")
+      BigNumber.from("272655342834")
     );
 
     await rollToNextOption(ethCallVault, strikeSelectionETH);
 
     assert.isAtLeast(
       Number((await ethers.provider.getBalance(await signer1.getAddress())).toString()),
-      Number("6335845527154759231")
+      Number("1640843000000000000")
     );
 
     await vaultQueue.connect(keeperSigner).transfer(ethCallVault.address);
@@ -397,7 +451,7 @@ describe("VaultQueue", () => {
 
     assert.isAtLeast(
       Number((await ethers.provider.getBalance(await signer1.getAddress())).toString()),
-      Number("16408438252661219229")
+      Number("1640843000000000000")
     );
   });
 
@@ -417,7 +471,7 @@ describe("VaultQueue", () => {
         .setExpiryPrice(
           WSTETH_ADDRESS[CHAINID.ETH_MAINNET],
           expiry,
-          BigNumber.from("100000000000")
+          BigNumber.from("272655342834")
         );
 
       const res = await oracleContract
@@ -425,7 +479,7 @@ describe("VaultQueue", () => {
         .setExpiryPrice(
           WETH_ADDRESS[CHAINID.ETH_MAINNET],
           expiry,
-          BigNumber.from("100000000000")
+          BigNumber.from("272655342834")
         );
 
       const receipt = await res.wait();
@@ -513,7 +567,7 @@ describe("VaultQueue", () => {
       oracleContract,
       await wbtcPriceSigner.getAddress(),
       await getCurrentOptionExpiry(wbtcCallVault),
-      BigNumber.from("100000000000")
+      BigNumber.from("272655342834")
     );
 
     await rollToNextOption(wbtcCallVault, strikeSelectionWBTC);
@@ -535,7 +589,7 @@ describe("VaultQueue", () => {
       oracleContract,
       await wbtcPriceSigner.getAddress(),
       await getCurrentOptionExpiry(wbtcCallVault),
-      BigNumber.from("100000000000")
+      BigNumber.from("272655342834")
     );
 
     await rollToNextOption(wbtcCallVault, strikeSelectionWBTC);
@@ -553,75 +607,82 @@ describe("VaultQueue", () => {
     );
   });
 
-  // Rescue
-  //
-  it("rescueETH() works for only owner", async () => {
-    await signer1.sendTransaction({
-      to: vaultQueue.address,
-      value: parseEther("1"),
-    });
-    assert.equal(
-      (await ethers.provider.getBalance(vaultQueue.address)).toString(),
-      parseEther("1").toString()
+  it("Queues up partial vault withdraw from ETH vault to creditor vault", async () => {
+    const queueWithdrawal = async (signer: JsonRpcSigner) => {
+        await ethCallVault.connect(signer).maxRedeem();
+
+        const amountToWithdraw = parseEther(".001");
+
+        await ethCallVault.connect(signer).approve(vaultQueue.address, amountToWithdraw);
+        await vaultQueue
+          .connect(signer)
+          .queueTransfer(
+            ethCallVault.address,
+            stethCallVault.address,
+            stethCallVault.address,
+            "0",
+            amountToWithdraw
+          );
+    };
+
+    await queueWithdrawal(signer1);
+    await queueWithdrawal(signer2);
+
+    await setOpynOracleExpiryPrice(
+      WETH_ADDRESS[CHAINID.ETH_MAINNET],
+      oracleContract,
+      await wethPriceSigner.getAddress(),
+      await getCurrentOptionExpiry(ethCallVault),
+      BigNumber.from("272655342834")
     );
-    const keeperBalance = (
-      await ethers.provider.getBalance(keeperSigner.address)
-    ).toString();
 
-    assert.isAtLeast(Number(keeperBalance), Number("9969970668511593349061"));
+    await rollToNextOption(ethCallVault, strikeSelectionETH);
 
-    await vaultQueue
+    const interVaultTransferTx1 = await vaultQueue
       .connect(keeperSigner)
-      .rescueETH(parseEther("1"));
+      .transfer(ethCallVault.address);
 
-    assert.equal(
-      (await ethers.provider.getBalance(vaultQueue.address)).toString(),
-      "0"
+    await queueWithdrawal(signer5);
+
+    await setOpynOracleExpiryPrice(
+      WETH_ADDRESS[CHAINID.ETH_MAINNET],
+      oracleContract,
+      await wethPriceSigner.getAddress(),
+      await getCurrentOptionExpiry(ethCallVault),
+      BigNumber.from("272655342834")
     );
-    assert.bnGt(
-      BigNumber.from(await ethers.provider.getBalance(keeperSigner.address)),
-      BigNumber.from(keeperBalance).sub(parseEther("1"))
-    );
+
+    await rollToNextOption(ethCallVault, strikeSelectionETH);
+
+    const interVaultTransferTx2 = await vaultQueue
+      .connect(keeperSigner)
+      .transfer(ethCallVault.address);
+
+    // Deposit events are the same because the amount is fixed at .001 eth
+    await expect(interVaultTransferTx1)
+      .to.emit(stethCallVault, "Deposit")
+      .withArgs(await signer1.getAddress(), "1076049895034363", "16");
+
+    await expect(interVaultTransferTx1)
+      .to.emit(stethCallVault, "Deposit")
+      .withArgs(await signer2.getAddress(), "1076049895034363", "16");
+
+    await expect(interVaultTransferTx2)
+      .to.emit(stethCallVault, "Deposit")
+      .withArgs(await signer5.getAddress(), "1076049895034363", "16");
   });
 
-  it("rescueETH() fails for wrong owner", async () => {
-    await signer1.sendTransaction({
-      to: vaultQueue.address,
-      value: BigNumber.from("1000"),
-    });
-    assert.equal(
-      (await ethers.provider.getBalance(vaultQueue.address)).toString(),
-      "1000"
-    );
+
+  //
+  // Payable
+  ///
+  it("user can't pay contract", async () => {
     await expect(
-      vaultQueue.connect(signer1).rescueETH("1000")
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("rescue() works for only owner", async () => {
-    await steth.connect(signer1).transfer(vaultQueue.address, "10000");
-    assert.equal(
-      (await steth.balanceOf(await vaultQueue.address)).toString(),
-      "9999"
-    );
-
-    await vaultQueue.connect(keeperSigner).rescue(steth.address, "1000");
-
-    assert.equal(
-      (await steth.balanceOf(await vaultQueue.address)).toString(),
-      "8999"
-    );
-  });
-
-  it("rescue() fails for wrong owner", async () => {
-    await steth.connect(signer1).transfer(vaultQueue.address, "10");
-    assert.equal(
-      (await steth.balanceOf(await vaultQueue.address)).toString(),
-      "9"
-    );
-    await expect(
-      vaultQueue.connect(signer1).rescue(await steth.address, "9")
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+      signer1.sendTransaction({
+        to: vaultQueue.address,
+        value: parseEther("1")
+      })
+    ).to.be.revertedWith("Invalid sender");
   });
 });
 
@@ -666,8 +727,8 @@ describe("VaultQueue - AVAX -> sAVAX", () => {
     );
 
     const VaultQueue = await ethers.getContractFactory("VaultQueue");
-    vaultQueue = await VaultQueue.deploy();
-    await vaultQueue.initialize(avaxCallVault.address, keeperSigner.address);
+    vaultQueue = await VaultQueue.deploy(avaxCallVault.address, keeperSigner.address);
+    await vaultQueue.initialize();
 
     ownerSigner = await impersonate(ORACLE_OWNER[CHAINID.AVAX_MAINNET]);
     avaxPriceSigner = await impersonate(CHAINLINK_WETH_PRICER[CHAINID.AVAX_MAINNET]);
