@@ -44,7 +44,7 @@ const main = async ({
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
-  console.log(`02 - Deploying APE Call Theta Vault on ${network.name}`);
+  console.log(`18 - Deploying APE Call Theta Vault on ${network.name}`);
 
   const chainId = network.config.chainId;
 
